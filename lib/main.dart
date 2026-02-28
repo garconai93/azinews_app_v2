@@ -46,7 +46,6 @@ class NewsItem {
 }
 
 class NewsService {
-  // Folosim direct RSS prin proxy
   static const String digi24Url = 'https://www.digi24.ro/rss';
   static const String mediafaxUrl = 'https://www.mediafax.ro/rss';
 
@@ -71,7 +70,6 @@ class NewsService {
   }
 
   Future<List<NewsItem>> _fetchFromRss(String url, String source) async {
-    // Folosim un proxy CORS alternativ
     final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
     
     final response = await http.get(Uri.parse(proxyUrl));
@@ -90,12 +88,10 @@ class NewsService {
       final description = item.findElements('description').firstOrNull?.innerText ?? '';
       final link = item.findElements('link').firstOrNull?.innerText ?? '';
       
-      // Extrage data publicării
       DateTime? pubDate;
       final pubDateStr = item.findElements('pubDate').firstOrNull?.innerText;
       if (pubDateStr != null) {
         try {
-          // Format: Sat, 28 Feb 2026 14:30:00 +0000
           final parts = RegExp(r', (\d+) (\w+) (\d+) (\d+):(\d+):(\d+)').firstMatch(pubDateStr);
           if (parts != null) {
             final day = parts.group(1)!;
@@ -117,7 +113,6 @@ class NewsService {
         }
       }
       
-      // Extrage imagine
       String? imageUrl;
       var mediaContent = item.findElements('media:content').firstOrNull;
       if (mediaContent != null) {
@@ -131,7 +126,6 @@ class NewsService {
         }
       }
 
-      // Curăță HTML din descriere
       final cleanDesc = description
           .replaceAll(RegExp(r'<[^>]*>'), '')
           .replaceAll('&nbsp;', ' ')
@@ -201,6 +195,101 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _showNewsDetail(NewsItem item) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: item.source == 'Digi24' ? Colors.blue : Colors.orange,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      item.source,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    item.title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (item.pubDate != null)
+                    Text(
+                      _formatFullDate(item.pubDate!),
+                      style: TextStyle(color: Colors.grey[500]),
+                    ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  Text(
+                    item.description.replaceAll(RegExp(r'\.\.\.$'), ''),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      height: 1.6,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        // Poți adăuga funcționalitate de deschidere în browser
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('Citește mai mult'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatFullDate(DateTime date) {
+    return DateFormat('dd MMMM yyyy, HH:mm').format(date);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -249,9 +338,8 @@ class _HomePageState extends State<HomePage> {
                           vertical: 8,
                         ),
                         child: InkWell(
-                          onTap: () {
-                            // Poți adăuga funcționalitate de deschidere link
-                          },
+                          onTap: () => _showNewsDetail(item),
+                          borderRadius: BorderRadius.circular(12),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Column(
@@ -301,6 +389,8 @@ class _HomePageState extends State<HomePage> {
                                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                       color: Colors.grey[400],
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ],
