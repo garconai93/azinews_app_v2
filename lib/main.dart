@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const AziNewsApp());
@@ -267,8 +268,11 @@ class _HomePageState extends State<HomePage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        // Poți adăuga funcționalitate de deschidere în browser
+                      onPressed: () async {
+                        final url = Uri.parse(item.link);
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(url, mode: LaunchMode.externalApplication);
+                        }
                       },
                       icon: const Icon(Icons.open_in_new),
                       label: const Text('Citește mai mult'),
