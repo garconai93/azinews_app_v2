@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 void main() {
   runApp(const AziNewsApp());
@@ -46,7 +47,6 @@ class NewsItem {
 }
 
 class NewsService {
-  // Folosim rss2json care nu are probleme CORS
   static const String digi24Url = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.digi24.ro/rss';
   static const String mediafaxUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.mediafax.ro/rss';
 
@@ -91,7 +91,6 @@ class NewsService {
       final description = item['description'] ?? '';
       final link = item['link'] ?? '';
       
-      // Extrage timpul
       String timeAgo = 'Acum';
       final pubDate = item['pubDate'];
       if (pubDate != null) {
@@ -120,7 +119,7 @@ class NewsService {
         imageUrl = item['enclosure']['link'];
       }
 
-      // Curăță descrierea - păstrăm mai mult
+      // Curăță descrierea
       String cleanDesc = description
           .toString()
           .replaceAll(RegExp(r'<[^>]*>'), '')
@@ -204,6 +203,29 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Imagine în detail
+                  if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: item.imageUrl!,
+                        height: 200,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          height: 200,
+                          color: Colors.grey[800],
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          height: 200,
+                          color: Colors.grey[800],
+                          child: const Icon(Icons.image_not_supported, size: 50),
+                        ),
+                      ),
+                    ),
+                  if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                    const SizedBox(height: 20),
                   Center(
                     child: Container(
                       width: 40,
@@ -367,7 +389,6 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -388,7 +409,6 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-            // News List
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -458,63 +478,84 @@ class _HomePageState extends State<HomePage> {
                               final item = _news[index];
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
+                                clipBehavior: Clip.antiAlias,
                                 child: InkWell(
                                   onTap: () => _showNewsDetail(item),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Poza
+                                      if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                                        CachedNetworkImage(
+                                          imageUrl: item.imageUrl!,
+                                          height: 180,
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) => Container(
+                                            height: 180,
+                                            color: Colors.grey[800],
+                                            child: const Center(child: CircularProgressIndicator()),
+                                          ),
+                                          errorWidget: (context, url, error) => const SizedBox.shrink(),
+                                        ),
+                                      Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 4,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: item.source == 'Digi24'
-                                                    ? Colors.blue
-                                                    : Colors.orange,
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                item.source,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: item.source == 'Digi24'
+                                                        ? Colors.blue
+                                                        : Colors.orange,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    item.source,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
+                                                const Spacer(),
+                                                Text(
+                                                  item.timeAgo,
+                                                  style: Theme.of(context).textTheme.bodySmall,
+                                                ),
+                                              ],
                                             ),
-                                            const Spacer(),
+                                            const SizedBox(height: 12),
                                             Text(
-                                              item.timeAgo,
-                                              style: Theme.of(context).textTheme.bodySmall,
+                                              item.title,
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
+                                            if (item.description.isNotEmpty) ...[
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                item.description,
+                                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                  color: Colors.grey[400],
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
                                           ],
                                         ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          item.title,
-                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        if (item.description.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            item.description,
-                                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                              color: Colors.grey[400],
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );
