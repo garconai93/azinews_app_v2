@@ -111,12 +111,20 @@ class NewsService {
         }
       }
       
-      // Extrage imagine
+      // Extrage imagine - verificăm mai multe câmpuri
       String? imageUrl;
-      if (item['thumbnail'] != null) {
-        imageUrl = item['thumbnail'];
+      final thumb = item['thumbnail'];
+      if (thumb != null && thumb.toString().isNotEmpty && thumb.toString() != 'https://s.iw.ro/_spacedesk_/thumb_default.png') {
+        imageUrl = thumb.toString();
       } else if (item['enclosure'] != null && item['enclosure']['link'] != null) {
         imageUrl = item['enclosure']['link'];
+      } else if (item['content'] != null) {
+        // Încearcă să extragi imaginea din content HTML
+        final content = item['content'].toString();
+        final imgMatch = RegExp(r'<img[^>]+src="([^"]+)"').firstMatch(content);
+        if (imgMatch != null) {
+          imageUrl = imgMatch.group(1);
+        }
       }
 
       // Curăță descrierea
