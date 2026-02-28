@@ -120,7 +120,7 @@ class NewsService {
         imageUrl = item['enclosure']['link'];
       }
 
-      // Curăță descrierea
+      // Curăță descrierea - păstrăm mai mult
       String cleanDesc = description
           .toString()
           .replaceAll(RegExp(r'<[^>]*>'), '')
@@ -132,10 +132,6 @@ class NewsService {
           .replaceAll('&#8221;', '"')
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
-
-      if (cleanDesc.length > 200) {
-        cleanDesc = '${cleanDesc.substring(0, 200)}...';
-      }
 
       if (title.isNotEmpty) {
         news.add(NewsItem(
@@ -187,11 +183,97 @@ class _HomePageState extends State<HomePage> {
     return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 
-  void _showNewsDetail(NewsItem item) async {
-    final url = Uri.parse(item.link);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
+  void _showNewsDetail(NewsItem item) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: item.source == 'Digi24' ? Colors.blue : Colors.orange,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      item.source,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    item.title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    item.timeAgo,
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  Text(
+                    item.description,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      height: 1.6,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final url = Uri.parse(item.link);
+                        if (await canLaunchUrl(url)) {
+                          await launchUrl(url, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('Citește mai mult'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showTermsDialog() {
@@ -427,7 +509,7 @@ class _HomePageState extends State<HomePage> {
                                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                               color: Colors.grey[400],
                                             ),
-                                            maxLines: 3,
+                                            maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ],
