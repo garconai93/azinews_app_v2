@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:xml/xml.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
@@ -45,79 +46,137 @@ class NewsItem {
 }
 
 class NewsService {
-  static const String baseUrl = 'https://azinews.ro';
+  // Folosim RSS-ul direct de pe Digi24 și Mediafax
+  static const String digi24Url = 'https://www.digi24.ro/rss';
+  static const String mediafaxUrl = 'https://www.mediafax.ro/rss';
 
   Future<List<NewsItem>> fetchNews() async {
+    List<NewsItem> allNews = [];
+
     try {
-      final response = await http.get(Uri.parse(baseUrl));
+      final digiNews = await _fetchFromRss(digi24Url, 'Digi24');
+      allNews.addAll(digiNews);
+    } catch (e) {
+      debugPrint('Error fetching Digi24: $e');
+    }
+
+    try {
+      final mediafaxNews = await _fetchFromRss(mediafaxUrl, 'Mediafax');
+      allNews.addAll(mediafaxNews);
+    } catch (e) {
+      debugPrint('Error fetching Mediafax: $e');
+    }
+
+    // Sortează după dată
+    allNews.sort((a, b) => b.timeAgo.compareTo(a.timeAgo));
+    
+    return allNews;
+  }
+
+  Future<List<NewsItem>> _fetchFromRss(String url, String source) async {
+    // Folosim un proxy CORS mai rapid
+    final proxyUrl = 'https://api.allorigins.win/get?url=${Uri.encodeComponent(url)}';
+    
+    final response = await http.get(Uri.parse(proxyUrl));
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load RSS: ${response.statusCode}');
+    }
+
+    final data = response.body;
+    // Parse JSON response from allorigins
+    final jsonMatch = RegExp(r'"contents":"(.*)"').firstMatch(data);
+    final xmlContent = jsonMatch?.group(1) ?? data;
+    final decodedContent = Uri.decodeFull(xmlContent.replaceAll(r'\n', '\n'));
+    
+    final document = XmlDocument.parse(decodedContent);
+    final items = document.findAllElements('item');
+
+    List<NewsItem> news = [];
+    
+    for (var item in items.take(15)) {
+      final title = item.findElements('title').firstOrNull?.innerText ?? '';
+      final description = item.findElements('description').firstOrNull?.innerText ?? '';
+      final link = item.findElements('link').firstOrNull?.innerText ?? '';
       
-      if (response.statusCode != 200) {
-        throw Exception('Failed to load: ${response.statusCode}');
+      // Extrage timpul
+      String timeAgo = 'Acum';
+      final pubDateStr = item.findElements('pubDate').firstOrNull?.innerText;
+      if (pubDateStr != null) {
+        try {
+          final dateMatch = RegExp(r', (\d+) (\w+) (\d+) (\d+):(\d+):(\d+)').firstMatch(pubDateStr);
+          if (dateMatch != null) {
+            final months = {
+              'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+              'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+              'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+            };
+            final day = dateMatch.group(1)!;
+            final month = dateMatch.group(2)!;
+            final year = dateMatch.group(3)!;
+            final hour = dateMatch.group(4)!;
+            final minute = dateMatch.group(5)!;
+            
+            final pubDate = DateTime.tryParse('$year-${months[month]}-${day.padLeft(2, '0')}T$hour:$minute:00');
+            if (pubDate != null) {
+              final diff = DateTime.now().difference(pubDate.toLocal());
+              if (diff.inMinutes < 60) {
+                timeAgo = '${diff.inMinutes}m';
+              } else if (diff.inHours < 24) {
+                timeAgo = '${diff.inHours}h';
+              } else {
+                timeAgo = '${diff.inDays}z';
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Date parse error: $e');
+        }
+      }
+      
+      // Extrage imagine
+      String? imageUrl;
+      var mediaContent = item.findElements('media:content').firstOrNull;
+      if (mediaContent != null) {
+        imageUrl = mediaContent.getAttribute('url');
+      }
+      
+      if (imageUrl == null) {
+        var enclosure = item.findElements('enclosure').firstOrNull;
+        if (enclosure != null && enclosure.getAttribute('type')?.startsWith('image') == true) {
+          imageUrl = enclosure.getAttribute('url');
+        }
       }
 
-      final html = response.body;
-      List<NewsItem> news = [];
-      
-      // Parse stiri - pattern like in azinews.ro
-      final newsRegex = RegExp(
-        r'<a href="(https?://[^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]*)"[\s\S]*?<span[^>]*>(Mediafax|Digi24)</span>[\s\S]*?<p>([^<]+)</p>[\s\S]*?<span>([^<]+)</span>',
-        multiLine: true,
-      );
-      
-      final matches = newsRegex.allMatches(html);
-      
-      for (var match in matches.take(20)) {
-        final link = match.group(1) ?? '';
-        final imageUrl = match.group(2);
-        final source = match.group(3) ?? '';
-        final title = match.group(4) ?? '';
-        final timeAgo = match.group(5) ?? '';
-        
-        if (title.isNotEmpty && link.isNotEmpty) {
-          news.add(NewsItem(
-            title: title,
-            description: 'Click pentru detalii...',
-            link: link,
-            imageUrl: imageUrl,
-            source: source,
-            timeAgo: timeAgo,
-          ));
-        }
+      // Curăță descrierea
+      String cleanDesc = description
+          .replaceAll(RegExp(r'<[^>]*>'), '')
+          .replaceAll('&nbsp;', ' ')
+          .replaceAll('&amp;', '&')
+          .replaceAll('&quot;', '"')
+          .replaceAll('&#8217;', "'")
+          .replaceAll('&#8220;', '"')
+          .replaceAll('&#8221;', '"')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      if (cleanDesc.length > 200) {
+        cleanDesc = '${cleanDesc.substring(0, 200)}...';
       }
-      
-      // Fallback: simpler parsing
-      if (news.isEmpty) {
-        final simpleRegex = RegExp(
-          r'<a href="(https?://(?:www\.)?(?:digi24|mediafax)\.ro[^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]*)"[^>]*>[\s\S]*?<span[^>]*>(Mediafax|Digi24)</span>[\s\S]*?<p>([^<]+)</p>',
-          multiLine: true,
-        );
-        
-        final simpleMatches = simpleRegex.allMatches(html);
-        
-        for (var match in simpleMatches.take(20)) {
-          final link = match.group(1) ?? '';
-          final imageUrl = match.group(2);
-          final source = match.group(3) ?? '';
-          final title = match.group(4) ?? '';
-          
-          if (title.isNotEmpty && link.isNotEmpty) {
-            news.add(NewsItem(
-              title: title,
-              description: 'Click pentru detalii...',
-              link: link,
-              imageUrl: imageUrl,
-              source: source,
-              timeAgo: 'Acum',
-            ));
-          }
-        }
+
+      if (title.isNotEmpty) {
+        news.add(NewsItem(
+          title: title,
+          description: cleanDesc,
+          link: link,
+          imageUrl: imageUrl,
+          source: source,
+          timeAgo: timeAgo,
+        ));
       }
-      
-      return news;
-    } catch (e) {
-      debugPrint('Error fetching news: $e');
-      return [];
     }
+
+    return news;
   }
 }
 
@@ -395,6 +454,8 @@ class _HomePageState extends State<HomePage> {
                                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                               color: Colors.grey[400],
                                             ),
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ],
                                       ],
