@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:xml/xml.dart';
+import 'dart:convert';
 import 'package:intl/intl.dart';
 
 void main() {
@@ -44,8 +44,9 @@ class NewsItem {
 }
 
 class NewsService {
-  static const String digi24Url = 'https://www.digi24.ro/rss';
-  static const String mediafaxUrl = 'https://www.mediafax.ro/rss';
+  // Folosim rss2json pentru a evita problemele CORS
+  static const String digi24Url = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.digi24.ro/rss';
+  static const String mediafaxUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.mediafax.ro/rss';
 
   Future<List<NewsItem>> fetchNews() async {
     List<NewsItem> allNews = [];
@@ -74,34 +75,36 @@ class NewsService {
       throw Exception('Failed to load RSS');
     }
 
-    final document = XmlDocument.parse(response.body);
-    final items = document.findAllElements('item');
+    final data = json.decode(response.body);
+    
+    if (data['status'] != 'ok') {
+      throw Exception('RSS API error');
+    }
 
     List<NewsItem> news = [];
     
-    for (var item in items.take(10)) {
-      final title = item.findElements('title').firstOrNull?.innerText ?? '';
-      final description = item.findElements('description').firstOrNull?.innerText ?? '';
-      final link = item.findElements('link').firstOrNull?.innerText ?? '';
+    for (var item in data['items']) {
+      final title = item['title'] ?? '';
+      final description = item['description'] ?? '';
+      final link = item['link'] ?? '';
       
+      // Extrage imaginea
       String? imageUrl;
-      var mediaContent = item.findElements('media:content').firstOrNull;
-      if (mediaContent != null) {
-        imageUrl = mediaContent.getAttribute('url');
-      }
-      
-      if (imageUrl == null) {
-        var enclosure = item.findElements('enclosure').firstOrNull;
-        if (enclosure != null && enclosure.getAttribute('type')?.startsWith('image') == true) {
-          imageUrl = enclosure.getAttribute('url');
-        }
+      if (item['thumbnail'] != null) {
+        imageUrl = item['thumbnail'];
+      } else if (item['enclosure'] != null && item['enclosure']['link'] != null) {
+        imageUrl = item['enclosure']['link'];
       }
 
+      // Curăță HTML din descriere
       final cleanDesc = description
           .replaceAll(RegExp(r'<[^>]*>'), '')
           .replaceAll('&nbsp;', ' ')
           .replaceAll('&amp;', '&')
           .replaceAll('&quot;', '"')
+          .replaceAll('&#8217;', "'")
+          .replaceAll('&#8220;', '"')
+          .replaceAll('&#8221;', '"')
           .trim();
 
       if (title.isNotEmpty) {
@@ -173,11 +176,11 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       const Icon(Icons.error_outline, size: 64),
                       const SizedBox(height: 16),
-                      const Text('Nu s-au putut incarca stirile'),
+                      const Text('Nu s-au putut încărca știrile'),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadNews,
-                        child: const Text('Reincearca'),
+                        child: const Text('Reîncearcă'),
                       ),
                     ],
                   ),
