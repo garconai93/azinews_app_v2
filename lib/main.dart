@@ -95,7 +95,23 @@ class NewsService {
       final pubDateStr = item.findElements('pubDate').firstOrNull?.innerText;
       if (pubDateStr != null) {
         try {
-          pubDate = DateTime.parse(pubDateStr.replaceAll(RegExp(r'.*, (\d+) (\w+) (\d+) (\d+):(\d+):(\d+).*'), '$3-$2-$1T$4:$5:$6'));
+          // Format: Sat, 28 Feb 2026 14:30:00 +0000
+          final parts = RegExp(r', (\d+) (\w+) (\d+) (\d+):(\d+):(\d+)').firstMatch(pubDateStr);
+          if (parts != null) {
+            final day = parts.group(1)!;
+            final month = parts.group(2)!;
+            final year = parts.group(3)!;
+            final hour = parts.group(4)!;
+            final minute = parts.group(5)!;
+            final second = parts.group(6)!;
+            final months = {
+              'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+              'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+              'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+            };
+            final monthNum = months[month] ?? '01';
+            pubDate = DateTime.tryParse('$year-$monthNum-${day.padLeft(2, '0')}T$hour:$minute:$second');
+          }
         } catch (e) {
           debugPrint('Date parse error: $e');
         }
