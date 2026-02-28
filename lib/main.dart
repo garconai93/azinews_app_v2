@@ -1,6 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:xml/xml.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
@@ -46,9 +46,9 @@ class NewsItem {
 }
 
 class NewsService {
-  // Folosim RSS-ul direct de pe Digi24 și Mediafax
-  static const String digi24Url = 'https://www.digi24.ro/rss';
-  static const String mediafaxUrl = 'https://www.mediafax.ro/rss';
+  // Folosim rss2json care nu are probleme CORS
+  static const String digi24Url = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.digi24.ro/rss';
+  static const String mediafaxUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.mediafax.ro/rss';
 
   Future<List<NewsItem>> fetchNews() async {
     List<NewsItem> allNews = [];
@@ -67,66 +67,44 @@ class NewsService {
       debugPrint('Error fetching Mediafax: $e');
     }
 
-    // Sortează după dată
-    allNews.sort((a, b) => b.timeAgo.compareTo(a.timeAgo));
-    
     return allNews;
   }
 
   Future<List<NewsItem>> _fetchFromRss(String url, String source) async {
-    // Folosim un proxy CORS mai rapid
-    final proxyUrl = 'https://api.allorigins.win/get?url=${Uri.encodeComponent(url)}';
-    
-    final response = await http.get(Uri.parse(proxyUrl));
+    final response = await http.get(Uri.parse(url));
     
     if (response.statusCode != 200) {
       throw Exception('Failed to load RSS: ${response.statusCode}');
     }
 
-    final data = response.body;
-    // Parse JSON response from allorigins
-    final jsonMatch = RegExp(r'"contents":"(.*)"').firstMatch(data);
-    final xmlContent = jsonMatch?.group(1) ?? data;
-    final decodedContent = Uri.decodeFull(xmlContent.replaceAll(r'\n', '\n'));
+    final jsonData = json.decode(response.body) as Map<String, dynamic>;
     
-    final document = XmlDocument.parse(decodedContent);
-    final items = document.findAllElements('item');
+    if (jsonData['status'] != 'ok') {
+      throw Exception('RSS API error');
+    }
 
+    final items = jsonData['items'] as List<dynamic>? ?? [];
     List<NewsItem> news = [];
     
     for (var item in items.take(15)) {
-      final title = item.findElements('title').firstOrNull?.innerText ?? '';
-      final description = item.findElements('description').firstOrNull?.innerText ?? '';
-      final link = item.findElements('link').firstOrNull?.innerText ?? '';
+      final title = item['title'] ?? '';
+      final description = item['description'] ?? '';
+      final link = item['link'] ?? '';
       
       // Extrage timpul
       String timeAgo = 'Acum';
-      final pubDateStr = item.findElements('pubDate').firstOrNull?.innerText;
-      if (pubDateStr != null) {
+      final pubDate = item['pubDate'];
+      if (pubDate != null) {
         try {
-          final dateMatch = RegExp(r', (\d+) (\w+) (\d+) (\d+):(\d+):(\d+)').firstMatch(pubDateStr);
-          if (dateMatch != null) {
-            final months = {
-              'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
-              'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
-              'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
-            };
-            final day = dateMatch.group(1)!;
-            final month = dateMatch.group(2)!;
-            final year = dateMatch.group(3)!;
-            final hour = dateMatch.group(4)!;
-            final minute = dateMatch.group(5)!;
-            
-            final pubDate = DateTime.tryParse('$year-${months[month]}-${day.padLeft(2, '0')}T$hour:$minute:00');
-            if (pubDate != null) {
-              final diff = DateTime.now().difference(pubDate.toLocal());
-              if (diff.inMinutes < 60) {
-                timeAgo = '${diff.inMinutes}m';
-              } else if (diff.inHours < 24) {
-                timeAgo = '${diff.inHours}h';
-              } else {
-                timeAgo = '${diff.inDays}z';
-              }
+          final date = DateTime.tryParse(pubDate);
+          if (date != null) {
+            final diff = DateTime.now().difference(date.toLocal());
+            if (diff.inMinutes < 60) {
+              timeAgo = '${diff.inMinutes}m';
+            } else if (diff.inHours < 24) {
+              timeAgo = '${diff.inHours}h';
+            } else {
+              timeAgo = '${diff.inDays}z';
             }
           }
         } catch (e) {
@@ -136,20 +114,15 @@ class NewsService {
       
       // Extrage imagine
       String? imageUrl;
-      var mediaContent = item.findElements('media:content').firstOrNull;
-      if (mediaContent != null) {
-        imageUrl = mediaContent.getAttribute('url');
-      }
-      
-      if (imageUrl == null) {
-        var enclosure = item.findElements('enclosure').firstOrNull;
-        if (enclosure != null && enclosure.getAttribute('type')?.startsWith('image') == true) {
-          imageUrl = enclosure.getAttribute('url');
-        }
+      if (item['thumbnail'] != null) {
+        imageUrl = item['thumbnail'];
+      } else if (item['enclosure'] != null && item['enclosure']['link'] != null) {
+        imageUrl = item['enclosure']['link'];
       }
 
       // Curăță descrierea
       String cleanDesc = description
+          .toString()
           .replaceAll(RegExp(r'<[^>]*>'), '')
           .replaceAll('&nbsp;', ' ')
           .replaceAll('&amp;', '&')
