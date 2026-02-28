@@ -84,7 +84,7 @@ class NewsService {
 
     List<NewsItem> news = [];
     
-    for (var item in items.take(15)) {
+    for (var item in items.take(20)) {
       final title = item.findElements('title').firstOrNull?.innerText ?? '';
       final description = item.findElements('description').firstOrNull?.innerText ?? '';
       final link = item.findElements('link').firstOrNull?.innerText ?? '';
@@ -127,7 +127,8 @@ class NewsService {
         }
       }
 
-      final cleanDesc = description
+      // Curăță HTML și păstrează descrierea completă
+      String cleanDesc = description
           .replaceAll(RegExp(r'<[^>]*>'), '')
           .replaceAll('&nbsp;', ' ')
           .replaceAll('&amp;', '&')
@@ -135,12 +136,13 @@ class NewsService {
           .replaceAll('&#8217;', "'")
           .replaceAll('&#8220;', '"')
           .replaceAll('&#8221;', '"')
+          .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
 
       if (title.isNotEmpty) {
         news.add(NewsItem(
           title: title,
-          description: cleanDesc.length > 150 ? '${cleanDesc.substring(0, 150)}...' : cleanDesc,
+          description: cleanDesc,
           link: link,
           imageUrl: imageUrl,
           source: source,
@@ -196,6 +198,13 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  String _getHeaderDate() {
+    final now = DateTime.now();
+    final days = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
+    final months = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'];
+    return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]} ${now.year}';
+  }
+
   void _showNewsDetail(NewsItem item) {
     showModalBottomSheet(
       context: context,
@@ -206,7 +215,7 @@ class _HomePageState extends State<HomePage> {
       ),
       builder: (context) {
         return DraggableScrollableSheet(
-          initialChildSize: 0.7,
+          initialChildSize: 0.8,
           minChildSize: 0.5,
           maxChildSize: 0.95,
           expand: false,
@@ -259,7 +268,7 @@ class _HomePageState extends State<HomePage> {
                   const Divider(),
                   const SizedBox(height: 16),
                   Text(
-                    item.description.replaceAll(RegExp(r'\.\.\.$'), ''),
+                    item.description,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       height: 1.6,
                     ),
@@ -290,6 +299,91 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _showTermsDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Informații',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _buildLinkTile(
+                    context,
+                    'Termeni și Condiții',
+                    'https://azinews.streamlit.app/terms',
+                    Icons.description,
+                  ),
+                  _buildLinkTile(
+                    context,
+                    'Politica de Confidențialitate',
+                    'https://azinews.streamlit.app/privacy',
+                    Icons.privacy_tip,
+                  ),
+                  _buildLinkTile(
+                    context,
+                    'Contact',
+                    'mailto:garconaibot@gmail.com',
+                    Icons.email,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'AziNews © ${DateTime.now().year}',
+                    style: TextStyle(color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLinkTile(BuildContext context, String title, String url, IconData icon) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.blue),
+      title: Text(title),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: () async {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+    );
+  }
+
   String _formatFullDate(DateTime date) {
     return DateFormat('dd MMMM yyyy, HH:mm').format(date);
   }
@@ -297,114 +391,169 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Row(
+      body: SafeArea(
+        child: Column(
           children: [
-            Icon(Icons.newspaper),
-            SizedBox(width: 8),
-            Text('AziNews'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadNews,
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _news.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 64),
-                      const SizedBox(height: 16),
-                      const Text('Nu s-au putut încărca știrile'),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadNews,
-                        child: const Text('Reîncearcă'),
-                      ),
-                    ],
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text(
+                    'AziNews',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadNews,
-                  child: ListView.builder(
-                    itemCount: _news.length,
-                    itemBuilder: (context, index) {
-                      final item = _news[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        child: InkWell(
-                          onTap: () => _showNewsDetail(item),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: item.source == 'Digi24'
-                                            ? Colors.blue
-                                            : Colors.orange,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        item.source,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    if (item.pubDate != null)
+                  const SizedBox(height: 4),
+                  Text(
+                    _getHeaderDate(),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[400],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // News List
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _news.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline, size: 64),
+                              const SizedBox(height: 16),
+                              const Text('Nu s-au putut încărca știrile'),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: _loadNews,
+                                child: const Text('Reîncearcă'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadNews,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _news.length + 1, // +1 for footer
+                            itemBuilder: (context, index) {
+                              if (index == _news.length) {
+                                // Footer cu Termeni și Condiții
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 24),
+                                  child: Column(
+                                    children: [
                                       Text(
-                                        _formatDate(item.pubDate),
-                                        style: Theme.of(context).textTheme.bodySmall,
+                                        'AziNews © ${DateTime.now().year}',
+                                        style: TextStyle(color: Colors.grey[600]),
                                       ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  item.title,
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 16,
+                                        children: [
+                                          GestureDetector(
+                                            onTap: _showTermsDialog,
+                                            child: Text(
+                                              'Termeni',
+                                              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                                            ),
+                                          ),
+                                          GestureDetector(
+                                            onTap: _showTermsDialog,
+                                            child: Text(
+                                              'Confidențialitate',
+                                              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                                            ),
+                                          ),
+                                          GestureDetector(
+                                            onTap: _showTermsDialog,
+                                            child: Text(
+                                              'Contact',
+                                              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                if (item.description.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    item.description,
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: Colors.grey[400],
+                                );
+                              }
+                              
+                              final item = _news[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: InkWell(
+                                  onTap: () => _showNewsDetail(item),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: item.source == 'Digi24'
+                                                    ? Colors.blue
+                                                    : Colors.orange,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                item.source,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            const Spacer(),
+                                            if (item.pubDate != null)
+                                              Text(
+                                                _formatDate(item.pubDate),
+                                                style: Theme.of(context).textTheme.bodySmall,
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          item.title,
+                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (item.description.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            item.description,
+                                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                              color: Colors.grey[400],
+                                            ),
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ],
                                     ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ],
-                              ],
-                            ),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
