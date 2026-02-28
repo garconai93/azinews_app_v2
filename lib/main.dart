@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:xml/xml.dart';
 import 'package:intl/intl.dart';
 
 void main() {
@@ -33,6 +33,7 @@ class NewsItem {
   final String link;
   final String? imageUrl;
   final String source;
+  final DateTime? pubDate;
 
   NewsItem({
     required this.title,
@@ -40,13 +41,14 @@ class NewsItem {
     required this.link,
     this.imageUrl,
     required this.source,
+    this.pubDate,
   });
 }
 
 class NewsService {
-  // Folosim rss2json pentru a evita problemele CORS
-  static const String digi24Url = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.digi24.ro/rss';
-  static const String mediafaxUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.mediafax.ro/rss';
+  // Folosim direct RSS prin proxy
+  static const String digi24Url = 'https://www.digi24.ro/rss';
+  static const String mediafaxUrl = 'https://www.mediafax.ro/rss';
 
   Future<List<NewsItem>> fetchNews() async {
     List<NewsItem> allNews = [];
@@ -69,31 +71,48 @@ class NewsService {
   }
 
   Future<List<NewsItem>> _fetchFromRss(String url, String source) async {
-    final response = await http.get(Uri.parse(url));
+    // Folosim un proxy CORS alternativ
+    final proxyUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+    
+    final response = await http.get(Uri.parse(proxyUrl));
     
     if (response.statusCode != 200) {
-      throw Exception('Failed to load RSS');
+      throw Exception('Failed to load RSS: ${response.statusCode}');
     }
 
-    final data = json.decode(response.body);
-    
-    if (data['status'] != 'ok') {
-      throw Exception('RSS API error');
-    }
+    final document = XmlDocument.parse(response.body);
+    final items = document.findAllElements('item');
 
     List<NewsItem> news = [];
     
-    for (var item in data['items']) {
-      final title = item['title'] ?? '';
-      final description = item['description'] ?? '';
-      final link = item['link'] ?? '';
+    for (var item in items.take(15)) {
+      final title = item.findElements('title').firstOrNull?.innerText ?? '';
+      final description = item.findElements('description').firstOrNull?.innerText ?? '';
+      final link = item.findElements('link').firstOrNull?.innerText ?? '';
       
-      // Extrage imaginea
+      // Extrage data publicării
+      DateTime? pubDate;
+      final pubDateStr = item.findElements('pubDate').firstOrNull?.innerText;
+      if (pubDateStr != null) {
+        try {
+          pubDate = DateTime.parse(pubDateStr.replaceAll(RegExp(r'.*, (\d+) (\w+) (\d+) (\d+):(\d+):(\d+).*'), '$3-$2-$1T$4:$5:$6'));
+        } catch (e) {
+          debugPrint('Date parse error: $e');
+        }
+      }
+      
+      // Extrage imagine
       String? imageUrl;
-      if (item['thumbnail'] != null) {
-        imageUrl = item['thumbnail'];
-      } else if (item['enclosure'] != null && item['enclosure']['link'] != null) {
-        imageUrl = item['enclosure']['link'];
+      var mediaContent = item.findElements('media:content').firstOrNull;
+      if (mediaContent != null) {
+        imageUrl = mediaContent.getAttribute('url');
+      }
+      
+      if (imageUrl == null) {
+        var enclosure = item.findElements('enclosure').firstOrNull;
+        if (enclosure != null && enclosure.getAttribute('type')?.startsWith('image') == true) {
+          imageUrl = enclosure.getAttribute('url');
+        }
       }
 
       // Curăță HTML din descriere
@@ -114,6 +133,7 @@ class NewsService {
           link: link,
           imageUrl: imageUrl,
           source: source,
+          pubDate: pubDate,
         ));
       }
     }
@@ -147,6 +167,22 @@ class _HomePageState extends State<HomePage> {
       _news = news;
       _isLoading = false;
     });
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays}z';
+    } else {
+      return DateFormat('dd MMM').format(date);
+    }
   }
 
   @override
@@ -196,57 +232,63 @@ class _HomePageState extends State<HomePage> {
                           horizontal: 16,
                           vertical: 8,
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: item.source == 'Digi24'
-                                          ? Colors.blue
-                                          : Colors.orange,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      item.source,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
+                        child: InkWell(
+                          onTap: () {
+                            // Poți adăuga funcționalitate de deschidere link
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: item.source == 'Digi24'
+                                            ? Colors.blue
+                                            : Colors.orange,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        item.source,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
+                                    const Spacer(),
+                                    if (item.pubDate != null)
+                                      Text(
+                                        _formatDate(item.pubDate),
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  item.title,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  const Spacer(),
+                                ),
+                                if (item.description.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
                                   Text(
-                                    _formatDate(DateTime.now()),
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    item.description,
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.grey[400],
+                                    ),
                                   ),
                                 ],
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                item.title,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (item.description.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  item.description,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Colors.grey[400],
-                                  ),
-                                ),
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       );
@@ -254,9 +296,5 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    return DateFormat('HH:mm').format(date);
   }
 }
