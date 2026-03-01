@@ -67,6 +67,9 @@ class NewsService {
       debugPrint('Error fetching Mediafax: $e');
     }
 
+    // Amestecă știrile aleatoriu
+    allNews.shuffle();
+    
     return allNews;
   }
 
