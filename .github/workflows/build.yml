@@ -1,4 +1,4 @@
-name: Build APK
+name: Build AAB
 
 on:
   workflow_dispatch:
@@ -15,6 +15,15 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.27.0'
+      
+      - name: Create keystore
+        run: echo "$KEYSTORE" | base64 -d > android/app/release.keystore
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+      
+      - name: Update build.gradle
+        run: |
+          sed -i 's|AziNews-release.keystore|release.keystore|g' android/app/build.gradle
       
       - name: Clean Gradle cache
         run: rm -rf ~/.gradle/caches
