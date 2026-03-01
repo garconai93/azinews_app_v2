@@ -17,13 +17,7 @@ jobs:
           flutter-version: '3.27.0'
       
       - name: Create keystore
-        run: echo "$KEYSTORE" | base64 -d > android/app/release.keystore
-        env:
-          KEYSTORE: ${{ secrets.KEYSTORE }}
-      
-      - name: Update build.gradle
-        run: |
-          sed -i 's|AziNews-release.keystore|release.keystore|g' android/app/build.gradle
+        run: echo "$KEYSTORE" | base64 -d > android/app/AziNews-release.keystore
       
       - name: Clean Gradle cache
         run: rm -rf ~/.gradle/caches
