@@ -42,6 +42,7 @@ android {
             storePassword "azinews2026"
             keyAlias "azinews"
             keyPassword "azinews2026"
+            storeType "PKCS12"
         }
     }
 
