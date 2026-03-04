@@ -362,8 +362,14 @@ class _HomePageState extends State<HomePage> {
                   ),
                   _buildLinkTile(
                     context,
+                    'Despre',
+                    'https://azinews.ro/despre.html',
+                    Icons.info,
+                  ),
+                  _buildLinkTile(
+                    context,
                     'Contact',
-                    'mailto:garconaibot@gmail.com',
+                    'https://azinews.ro/contact.html',
                     Icons.email,
                   ),
                   const SizedBox(height: 24),
