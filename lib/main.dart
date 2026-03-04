@@ -49,6 +49,8 @@ class NewsItem {
 class NewsService {
   static const String digi24Url = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.digi24.ro/rss';
   static const String mediafaxUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.mediafax.ro/rss';
+  static const String libertateaUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.libertatea.ro/rss';
+  static const String adevarulUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.adevarul.ro/rss';
 
   Future<List<NewsItem>> fetchNews() async {
     List<NewsItem> allNews = [];
@@ -65,6 +67,20 @@ class NewsService {
       allNews.addAll(mediafaxNews);
     } catch (e) {
       debugPrint('Error fetching Mediafax: $e');
+    }
+
+    try {
+      final libertateaNews = await _fetchFromRss(libertateaUrl, 'Libertatea');
+      allNews.addAll(libertateaNews);
+    } catch (e) {
+      debugPrint('Error fetching Libertatea: $e');
+    }
+
+    try {
+      final adevarulNews = await _fetchFromRss(adevarulUrl, 'Adevărul');
+      allNews.addAll(adevarulNews);
+    } catch (e) {
+      debugPrint('Error fetching Adevărul: $e');
     }
 
     // Amestecă știrile aleatoriu
