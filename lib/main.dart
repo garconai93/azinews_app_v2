@@ -51,6 +51,7 @@ class NewsService {
   static const String mediafaxUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.mediafax.ro/rss';
   static const String libertateaUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.libertatea.ro/rss';
   static const String adevarulUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.adevarul.ro/rss';
+  static const String europafmUrl = 'https://api.rss2json.com/v1/api.json?rss_url=https://www.europafm.ro/rss/';
 
   Future<List<NewsItem>> fetchNews() async {
     List<NewsItem> allNews = [];
@@ -81,6 +82,13 @@ class NewsService {
       allNews.addAll(adevarulNews);
     } catch (e) {
       debugPrint('Error fetching Adevărul: $e');
+    }
+
+    try {
+      final europafmNews = await _fetchFromRss(europafmUrl, 'Europa FM');
+      allNews.addAll(europafmNews);
+    } catch (e) {
+      debugPrint('Error fetching Europa FM: $e');
     }
 
     // Amestecă știrile aleatoriu
